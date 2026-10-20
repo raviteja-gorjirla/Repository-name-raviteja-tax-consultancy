@@ -215,6 +215,8 @@ section[id]{scroll-margin-top:calc(var(--header-h) + 4px)}
 .crow.soon{box-shadow:inset 3px 0 0 var(--gold)}
 .c-due .dn{display:block;color:var(--ink);font-weight:800;font-size:15.5px}
 .empty button{margin-top:14px}
+.ext{color:#8A5A00;font-weight:800}
+.notice{margin-bottom:20px;padding:14px 18px;border-left:3px solid var(--gold);background:#FBF3DE;color:#4A3508;font-weight:600;font-size:15px;border-radius:0 var(--radius) var(--radius) 0}
 .tag{display:inline-block;padding:3px 11px;border-radius:99px;font-size:12.5px;font-weight:700;background:var(--mist);color:var(--navy);border:1px solid var(--line);white-space:nowrap}
 .tag.cat{background:#FBF3DE;border-color:#EBD8A4;color:#6C4F10}
 .empty{padding:40px 22px;text-align:center;color:var(--muted)}
@@ -487,6 +489,7 @@ section[id]{scroll-margin-top:calc(var(--header-h) + 4px)}
       </div>
     </div>
 
+    <div class="notice" id="calNotice" role="status" hidden></div>
     <div class="filters">
       <div class="f-group" id="viewGroup" role="group" aria-labelledby="viewLbl">
         <span class="f-label" id="viewLbl">Show</span>
@@ -496,9 +499,8 @@ section[id]{scroll-margin-top:calc(var(--header-h) + 4px)}
       <div class="f-group" id="catGroup"><span class="f-label" id="catLbl">Category</span></div>
       <div class="f-group" id="freqGroup"><span class="f-label" id="freqLbl">Frequency</span></div>
     </div>
-    <div class="reg-meta"><span id="regCount" aria-live="polite"></span><span id="regHint"></span></div>
     <div class="register" id="register" tabindex="0" aria-label="Compliance deadlines list"></div>
-    <p class="disclaimer">Due dates are for general information and may change based on government notifications, taxpayer category, state, turnover and applicable laws. Please verify the applicable due date before filing or making payment.</p>
+    <p class="disclaimer">Due dates are for general information and may change based on government notifications, taxpayer category, state, turnover and applicable laws. Please verify the applicable due date before filing or making payment. <span id="calReviewed"></span></p>
   </div>
 </section>
 
@@ -632,6 +634,25 @@ section[id]{scroll-margin-top:calc(var(--header-h) + 4px)}
   </div>
 </div>
 
+<script id="due-config">
+/* ===== DUE DATE UPDATES (edit this block when a deadline is extended) =====
+   Recurring dates update themselves every day. You only need this block when the government
+   extends or changes a due date, or when you want to show a short notice above the calendar.
+
+   LAST_UPDATED : shown under the calendar as "Calendar last reviewed: ..."
+   NOTICE       : a short message shown above the calendar. Use '' for no notice.
+   OVERRIDES    : one line per extended deadline. Copy the line below and change it.
+                  name must match the Service name in the calendar exactly.
+                  date is year-month-day. Once that date has passed, the page automatically
+                  goes back to the normal recurring date, so you never have to remove it.
+*/
+var LAST_UPDATED = 'October 2026';
+var NOTICE = '';
+var OVERRIDES = [
+  /* { name: 'ITR – Audit Cases', date: '2026-11-30', note: 'Extended by CBDT' }, */
+];
+/* ===== END OF DUE DATE UPDATES ===== */
+</script>
 <script>
 (function(){
 'use strict';
@@ -820,6 +841,14 @@ function nextDate(rule,t){
 function fmt(d){return d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}
 var T0=today0();
 D.forEach(function(r){r.next=r[4]?nextDate(r[4],T0):null});
+(typeof OVERRIDES!=='undefined'?OVERRIDES:[]).forEach(function(o){
+  var m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(o.date||'').trim()); if(!m)return;
+  var d=new Date(+m[1],+m[2]-1,+m[3]); if(d<T0)return;
+  D.forEach(function(r){ if(r[0]===o.name){ r.next=d; r.ext=o.note||'Revised date'; } });
+});
+var calNotice=$('calNotice');
+if(typeof NOTICE!=='undefined'&&NOTICE){calNotice.textContent=NOTICE;calNotice.hidden=false}
+if(typeof LAST_UPDATED!=='undefined'&&LAST_UPDATED){$('calReviewed').textContent='Calendar last reviewed: '+LAST_UPDATED+'.'}
 
 /* ---------- FILTERS + LIST ---------- */
 var fCat='All', fFreq='All', view='upcoming', WINDOW=45;
@@ -856,11 +885,6 @@ function render(){
       if(a.next&&b.next)return a.next-b.next||a[0].localeCompare(b[0]);
       if(a.next)return -1; if(b.next)return 1; return 0;
     });
-    $('regCount').textContent=rows.length+' deadline'+(rows.length===1?'':'s')+' from today ('+fmt(T0)+') to '+fmt(limit);
-    $('regHint').textContent='Updates automatically with today’s date';
-  }else{
-    $('regCount').textContent='Showing '+rows.length+' of '+D.length+' deadlines';
-    $('regHint').textContent='Scroll the list to browse all deadlines';
   }
   var h='<div class="crow chead" role="presentation"><span>Service</span><span>Due Date</span><span>Frequency</span><span>Category</span></div>';
   if(!rows.length){
@@ -871,7 +895,9 @@ function render(){
     if(view==='upcoming'&&r.next){
       var n=Math.round((r.next-T0)/86400000);
       if(n<=7)soon=' soon';
-      dueHtml='<span class="c-due"><span class="dn">'+fmt(r.next)+'</span><small>'+esc(r[1])+' · '+daysLabel(r.next)+'</small></span>';
+      dueHtml='<span class="c-due"><span class="dn">'+fmt(r.next)+'</span><small>'+(r.ext?'<b class="ext">'+esc(r.ext)+'</b> · ':esc(r[1])+' · ')+daysLabel(r.next)+'</small></span>';
+    }else if(r.ext&&r.next){
+      dueHtml='<span class="c-due">'+fmt(r.next)+'<small><b class="ext">'+esc(r.ext)+'</b> · normally '+esc(r[1])+'</small></span>';
     }else{
       dueHtml='<span class="c-due'+(ev?' event':'')+'">'+esc(r[1])+(r.next?'<small>Next: '+fmt(r.next)+'</small>':'')+'</span>';
     }
